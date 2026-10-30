@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 IST = timezone(timedelta(hours=5, minutes=30))
 STATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs", "state.json")
 CAPITAL = 100000
-LOTS, LOT = 1, 65         # shortcut: margin not modelled; 1 hedged lot fits in 1L, add lots only after paper proves it
+LOTS, LOT = 2, 65         # shortcut: margin not modelled; ~35-45k SPAN per hedged lot, so 2 is the most 1L carries
 WING = 200
 STOP_LOSS = 2000          # daily loss limit = 2% of capital
 TARGET_FRAC = 0.4
@@ -180,7 +180,7 @@ def selftest():
     tick(s, t0 + timedelta(minutes=30), chain_at({(23000.0, "CE"): 40, (23000.0, "PE"): 40, (23200.0, "CE"): 8, (22800.0, "PE"): 8}))
     tr = s["trades"][-1]
     assert s["position"] is None and tr["reason"] == "target", s["log"]
-    gross = 65 * ((99.5 - 40.5) * 2 + (7.5 - 20.5) * 2)
+    gross = LOTS * LOT * ((99.5 - 40.5) * 2 + (7.5 - 20.5) * 2)
     assert abs(tr["gross"] - gross) < 0.01 and abs(s["realized"] - (gross - tr["costs"])) < 0.01, tr
     # no second entry the same day
     tick(s, t0 + timedelta(minutes=60), chain_at({(23000.0, "CE"): 100, (23000.0, "PE"): 100, (23200.0, "CE"): 20, (22800.0, "PE"): 20}))
