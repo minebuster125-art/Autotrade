@@ -1,0 +1,34 @@
+name: paper-trader
+on:
+  schedule:
+    - cron: "40 3 * * 1-5"   # 09:10 IST, runs till 12:20
+    - cron: "45 6 * * 1-5"   # 12:15 IST, runs till close
+  workflow_dispatch:
+concurrency: paper-trader
+permissions:
+  contents: write
+jobs:
+  trade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    env:
+      DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
+      DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trade until the session ends
+        run: |
+          # state lives on its own branch so the minute-by-minute pushes never rebuild Pages
+          mkdir -p docs
+          git fetch -q origin paper-state && git show FETCH_HEAD:state.json > /tmp/s.json && mv /tmp/s.json docs/state.json || true
+          push() {
+            d=$(mktemp -d); cp docs/state.json "$d"/
+            (cd "$d" && git init -q -b paper-state && git add state.json \
+              && git -c user.name=paper-bot -c user.email=paper-bot@users.noreply.github.com commit -qm state \
+              && git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" paper-state)
+            rm -rf "$d"
+          }
+          while [ "$(TZ=Asia/Kolkata date +%H%M)" -lt 0915 ]; do sleep 20; done
+          UNTIL=$([ "$(TZ=Asia/Kolkata date +%H)" -lt 12 ] && echo 12:20 || echo 15:30)
+          while python3 papertrader.py --until "$UNTIL"; do push || echo "push failed"; sleep 60; done

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NIFTY Paper Trader</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--fg:#14171c;--mute:#667085;--line:#e4e7ec;--up:#0f8a4f;--down:#c8322b;--accent:#2f5bea}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1116;--card:#161b22;--fg:#e6e9ee;--mute:#8b949e;--line:#262c36;--up:#3fb97a;--down:#f0625a;--accent:#6b8cff}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:4px 0 2px}h2{font-size:14px;margin:0 0 10px;color:var(--mute);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.sub{color:var(--mute);font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:16px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;overflow-x:auto}
+.k{color:var(--mute);font-size:12px}.v{font-size:22px;font-weight:650;font-variant-numeric:tabular-nums}
+.up{color:var(--up)}.down{color:var(--down)}
+.banner{border-radius:10px;padding:10px 12px;margin:12px 0;background:color-mix(in srgb,var(--down) 14%,var(--card));border:1px solid var(--down)}
+.note{border-radius:10px;padding:10px 12px;margin:12px 0;background:var(--card);border:1px dashed var(--line);color:var(--mute);font-size:13px}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}th{color:var(--mute);font-weight:600;font-size:12px}
+.row{display:grid;grid-template-columns:2fr 1fr;gap:12px}@media (max-width:760px){.row{grid-template-columns:1fr}}
+pre{margin:0;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;max-height:280px;overflow:auto}
+svg{width:100%;height:200px;display:block}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--mute)}.live .dot{background:var(--up)}
+</style>
+</head>
+<body>
+<main>
+  <h1>NIFTY Weekly Options · Paper Trader</h1>
+  <div class="sub" id="status"><span class="dot"></span>loading…</div>
+  <div id="err"></div>
+  <div class="grid">
+    <div class="card"><div class="k">Portfolio value</div><div class="v" id="equity">–</div></div>
+    <div class="card"><div class="k">Today P&amp;L</div><div class="v" id="today">–</div></div>
+    <div class="card"><div class="k">Total P&amp;L</div><div class="v" id="total">–</div></div>
+    <div class="card"><div class="k">NIFTY spot</div><div class="v" id="spot">–</div></div>
+    <div class="card"><div class="k">Win rate</div><div class="v" id="win">–</div></div>
+  </div>
+  <div class="row">
+    <div class="card"><h2>Today P&amp;L (₹) by minute</h2><svg id="chart" viewBox="0 0 600 200" preserveAspectRatio="none" role="img" aria-label="Today P&L line chart"></svg></div>
+    <div class="card"><h2>Open position</h2><div id="pos">–</div></div>
+  </div>
+  <div class="card" style="margin-top:12px"><h2>Trades</h2><div id="trades">–</div></div>
+  <div class="row" style="margin-top:12px">
+    <div class="card"><h2>Bot log</h2><pre id="log"></pre></div>
+    <div class="card"><h2>Rules</h2><div id="rules"></div></div>
+  </div>
+  <div class="note">Paper trading only: no real orders. Prices are live from Dhan; fills assume buy at ask, sell at bid; charges approximated. Updates about every minute during market hours.</div>
+</main>
+<script>
+const SRC = "https://api.github.com/repos/minebuster125-art/Autotrade/contents/state.json?ref=paper-state";
+const inr = n => (n < 0 ? "−₹" : "₹") + Math.abs(n).toLocaleString("en-IN", {maximumFractionDigits: 0});
+const signed = n => (n > 0 ? "+" : "") + inr(n);
+const cls = n => n > 0 ? "up" : n < 0 ? "down" : "";
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+function setV(id, n, fmt = signed) { $(id).textContent = fmt(n); $(id).className = "v " + cls(n); }
+
+function chart(curve) {
+  const svg = $("chart");
+  if (!curve.length) { svg.innerHTML = '<text x="300" y="100" text-anchor="middle" fill="currentColor" opacity=".5">no ticks yet today</text>'; return; }
+  const ys = curve.map(c => c[1]), lo = Math.min(0, ...ys), hi = Math.max(0, ...ys), span = hi - lo || 1;
+  const x = i => curve.length < 2 ? 300 : 10 + i * 580 / (curve.length - 1), y = v => 190 - (v - lo) / span * 180;
+  const pts = curve.map((c, i) => `${x(i).toFixed(1)},${y(c[1]).toFixed(1)}`).join(" ");
+  const last = ys[ys.length - 1];
+  svg.innerHTML = `<line x1="0" x2="600" y1="${y(0)}" y2="${y(0)}" stroke="currentColor" opacity=".25" stroke-dasharray="4 4"/>
+    <polyline points="${pts}" fill="none" stroke="var(--${last >= 0 ? "up" : "down"})" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    <text x="8" y="14" font-size="12" fill="currentColor" opacity=".6">${esc(curve[0][0])} → ${esc(curve[curve.length - 1][0])} · ${esc(signed(last))}</text>`;
+}
+
+function render(s) {
+  const open = s.position && s.position.mtm || 0;
+  const todayPnl = (s.day_realized || 0) + open;
+  setV("equity", s.capital + s.realized + open, inr);
+  setV("today", todayPnl); setV("total", s.realized + open);
+  $("spot").textContent = s.spot ? s.spot.toLocaleString("en-IN") : "–";
+  const done = s.trades.length, wins = s.trades.filter(t => t.pnl > 0).length;
+  $("win").textContent = done ? `${Math.round(100 * wins / done)}% (${wins}/${done})` : "–";
+  chart(s.curve || []);
+  const p = s.position;
+  $("pos").innerHTML = p ? `<div class="sub">Iron fly · expiry ${esc(p.expiry)} · opened ${esc(p.opened)} · credit ${p.credit} pts · target ${esc(inr(p.target))}</div>
+    <table><tr><th>Leg</th><th>Qty</th><th>Entry</th><th>LTP</th><th>P&amp;L</th></tr>${p.legs.map(l => {
+      const pl = l.side * (l.ltp - l.entry) * l.qty;
+      return `<tr><td>${l.side < 0 ? "SELL" : "BUY"} ${l.strike} ${esc(l.type)}</td><td>${l.qty}</td><td>${l.entry}</td><td>${l.ltp}</td><td class="${cls(pl)}">${esc(signed(pl))}</td></tr>`;
+    }).join("")}<tr><th colspan="4">Open MTM</th><th class="${cls(open)}">${esc(signed(open))}</th></tr></table>` : '<div class="sub">No open position.</div>';
+  $("trades").innerHTML = done ? `<table><tr><th>Date</th><th>Open</th><th>Close</th><th>Expiry</th><th>Exit reason</th><th>Gross</th><th>Charges</th><th>Net</th></tr>${
+    s.trades.slice().reverse().map(t => `<tr><td>${esc(t.date)}</td><td>${esc(t.opened)}</td><td>${esc(t.closed)}</td><td>${esc(t.expiry)}</td><td>${esc(t.reason)}</td><td class="${cls(t.gross)}">${esc(signed(t.gross))}</td><td>${esc(inr(t.costs))}</td><td class="${cls(t.pnl)}"><b>${esc(signed(t.pnl))}</b></td></tr>`).join("")}</table>` : '<div class="sub">No trades yet.</div>';
+  $("log").textContent = (s.log || []).slice().reverse().join("\n");
+  const r = s.rules || {};
+  $("rules").innerHTML = `<table>
+    <tr><td>Capital</td><td>${esc(inr(s.capital))}</td></tr><tr><td>Size</td><td>${r.lots} lot × ${r.lot}</td></tr>
+    <tr><td>Wings</td><td>±${r.wing} pts</td></tr><tr><td>Daily stop</td><td>${esc(inr(-r.stop))}</td></tr>
+    <tr><td>Profit target</td><td>${Math.round(r.target_frac * 100)}% of credit</td></tr>
+    <tr><td>Entry window</td><td>${esc(r.entry)}</td></tr><tr><td>Flat by</td><td>${esc(r.flat)}</td></tr></table>`;
+  $("err").innerHTML = s.error ? `<div class="banner"><b>Bot error:</b> ${esc(s.error)}${/806|807|808|nvalid|xpired/.test(s.error) ? "<br>The Dhan token has probably expired: generate a new one and update the DHAN_ACCESS_TOKEN secret." : ""}</div>` : "";
+  const age = (Date.now() - new Date(s.updated)) / 60000, live = age < 3;
+  $("status").className = "sub" + (live ? " live" : "");
+  $("status").innerHTML = `<span class="dot"></span>${live ? "Live" : "Idle"} · last update ${esc(new Date(s.updated).toLocaleString("en-IN", {timeZone: "Asia/Kolkata"}))} IST`;
+}
+
+async function load() {
+  try {
+    const r = await fetch(SRC, {headers: {Accept: "application/vnd.github.raw"}, cache: "no-store"});
+    if (r.status === 404) { $("status").textContent = "Bot has not run yet. It starts at 09:15 IST on market days."; return; }
+    if (!r.ok) throw new Error("GitHub " + r.status);
+    render(await r.json());
+  } catch (e) { $("status").textContent = "Could not load data (" + e.message + "). Retrying…"; }
+}
+load();
+setInterval(load, 75000); // GitHub allows 60 unauthenticated reads an hour per IP
+</script>
+</body>
+</html>
