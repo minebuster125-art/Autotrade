@@ -1,8 +1,9 @@
 name: paper-trader
 on:
   schedule:
-    - cron: "40 3 * * 1-5"   # 09:10 IST, runs till 12:20
-    - cron: "45 6 * * 1-5"   # 12:15 IST, runs till close
+    # GitHub delays or drops scheduled runs (2 Nov: the 09:10 start fired at 17:07), so knock every
+    # 15 min; concurrency keeps one run trading and one queued to take over when it ends
+    - cron: "*/15 3-9 * * 1-5"   # 08:30-15:15 IST
   workflow_dispatch:
 concurrency: paper-trader
 permissions:
@@ -30,5 +31,6 @@ jobs:
             rm -rf "$d"
           }
           while [ "$(TZ=Asia/Kolkata date +%H%M)" -lt 0915 ]; do sleep 20; done
-          UNTIL=$([ "$(TZ=Asia/Kolkata date +%H)" -lt 12 ] && echo 12:20 || echo 15:30)
+          # hand over before the 200-minute job timeout kills us
+          UNTIL=$(TZ=Asia/Kolkata date -d "+170 min" +%H:%M); [[ "$UNTIL" > "15:30" || "$UNTIL" < "09:15" ]] && UNTIL=15:30
           while python3 papertrader.py --until "$UNTIL"; do push || echo "push failed"; sleep 60; done
