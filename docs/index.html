@@ -92,7 +92,7 @@ function render(s) {
     <tr><td>Wings</td><td>±${r.wing} pts</td></tr><tr><td>Daily stop</td><td>${esc(inr(-r.stop))}</td></tr>
     <tr><td>Profit target</td><td>${Math.round(r.target_frac * 100)}% of credit</td></tr>
     <tr><td>Entry window</td><td>${esc(r.entry)}</td></tr><tr><td>Flat by</td><td>${esc(r.flat)}</td></tr></table>`;
-  $("err").innerHTML = s.error ? `<div class="banner"><b>Bot error:</b> ${esc(s.error)}${/806|807|808|nvalid|xpired/.test(s.error) ? "<br>The Dhan token has probably expired: generate a new one and update the DHAN_ACCESS_TOKEN secret." : ""}</div>` : "";
+  $("err").innerHTML = s.error ? `<div class="banner"><b>Bot error:</b> ${esc(s.error)}${/401|806|807|808|nvalid|xpired|nauthorized/.test(s.error) ? "<br>The Dhan token has probably expired: generate a new one and update the DHAN_ACCESS_TOKEN secret." : ""}</div>` : "";
   const age = (Date.now() - new Date(s.updated)) / 60000, live = age < 3;
   $("status").className = "sub" + (live ? " live" : "");
   $("status").innerHTML = `<span class="dot"></span>${live ? "Live" : "Idle"} · last update ${esc(new Date(s.updated).toLocaleString("en-IN", {timeZone: "Asia/Kolkata"}))} IST`;
